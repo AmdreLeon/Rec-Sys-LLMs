@@ -1,0 +1,26 @@
+# Entorno virtual y paquetes
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Base de datos vectorial persistente (pesada y dinámica)
+chroma_db/
+
+# Base de datos
+data/
+
+# Streamlit
+.streamlit/
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs y SO
+*.log
+.DS_Store
