@@ -38,6 +38,7 @@ class RAGRecommendationEngine:
         top_k_retrieval: int = 6,
         top_n_final: int = 3,
         prompt_template: str | None = None,
+        model_name: str | None = None,
     ) -> dict:
         t_total_start = time.perf_counter()
         target_id_str = str(user_id).strip()
@@ -94,12 +95,14 @@ class RAGRecommendationEngine:
             candidates=candidates,
             top_n=top_n_final,
             prompt_template=prompt_template,
+            model_override=model_name,
         )
         latencia_generacion = round(time.perf_counter() - t_gen_start, 3)
         latencia_total = round(time.perf_counter() - t_total_start, 3)
 
         return {
             "user_id": target_id_str,
+            "modelo_usado": model_name or self.ollama.gen_model,
             "contexto_usado": combined_context,
             "candidatos_recuperados": candidates,
             "resultado_rag": recommendations,

@@ -126,6 +126,21 @@ from src.ollama_client import DEFAULT_PROMPT_TEMPLATE, OllamaService
 from src.rag_engine import RAGRecommendationEngine
 from src.vector_store import ChromaStore
 
+AVAILABLE_GEN_MODELS = [
+    "qwen2.5:7b",
+    "llama3.2:3b",
+    "gemma2:2b",
+    "qwen2.5-coder:7b-instruct-q4_K_M",
+    "gemma4:e4b",
+]
+
+selected_model = st.sidebar.selectbox(
+    "Modelo Generativo (LLM):",
+    AVAILABLE_GEN_MODELS,
+    index=0,
+    help="Modelo encargado de filtrar candidatos, estructurar el JSON y redactar justificaciones.",
+)
+
 st.set_page_config(page_title="RAG RecSys Lab", layout="wide")
 st.title("🔬 RAG RecSys: Laboratorio de Recomendación Turística")
 
@@ -219,11 +234,12 @@ with tab_rec:
         ):
             try:
                 res = engine.recommend_for_user(
-                    user_id=target_id,
-                    top_k_retrieval=top_k,
-                    top_n_final=top_n,
-                    prompt_template=active_prompt,
-                )
+                user_id=target_id,
+                top_k_retrieval=top_k,
+                top_n_final=top_n,
+                prompt_template=active_prompt,
+                model_name=selected_model,
+            )
 
                 # --- MÉTRICAS DE LATENCIA ---
                 tiempos = res.get("tiempos", {})

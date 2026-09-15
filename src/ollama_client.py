@@ -118,10 +118,13 @@ class OllamaService:
         candidates: list[dict],
         top_n: int = 3,
         prompt_template: str | None = None,
+        model_override: str | None = None,
     ) -> dict:
-        template = prompt_template if prompt_template else DEFAULT_PROMPT_TEMPLATE
+        template = (
+            prompt_template if prompt_template else DEFAULT_PROMPT_TEMPLATE
+        )
+        active_gen_model = model_override if model_override else self.gen_model
 
-        # Limpiar candidatos para no sobrecargar el prompt con metadatos irrelevantes
         clean_candidates = [
             {
                 "nombre_sitio": c.get("nombre_sitio", ""),
@@ -140,7 +143,7 @@ class OllamaService:
         )
 
         response = ollama.generate(
-            model=self.gen_model,
+            model=active_gen_model,
             prompt=formatted_prompt,
             format="json",
             options={"temperature": 0.1},
