@@ -194,21 +194,29 @@ top_n = st.sidebar.slider(
 if top_k < top_n:
     st.sidebar.warning("⚠️ Se recomienda que Top-K sea mayor o igual a Top-N.")
 
-st.sidebar.divider()
-st.sidebar.subheader("Selección de Sujeto de Prueba")
-lista_usuarios = df_profiles.apply(
-    lambda x: f"{x['id_usuario']} - {x.get('nombre', 'Sin Nombre')}", axis=1
-).tolist()
-usuario_seleccionado = st.sidebar.selectbox("Usuario activo:", lista_usuarios)
-target_id = usuario_seleccionado.split(" - ")[0].strip()
+# st.sidebar.divider()
+# st.sidebar.subheader("Selección de Sujeto de Prueba")
+# lista_usuarios = df_profiles.apply(
+#     lambda x: f"{x['id_usuario']} - {x.get('nombre', 'Sin Nombre')}", axis=1
+# ).tolist()
+# usuario_seleccionado = st.sidebar.selectbox("Usuario activo:", lista_usuarios)
+# target_id = usuario_seleccionado.split(" - ")[0].strip()
 
 # --- ESTRUCTURA POR PESTAÑAS ---
-tab_rec, tab_prompt, tab_data = st.tabs(
-    ["🎯 Recomendador RAG", "📝 Editor de Prompt", "🗄️ Visualizador de Datos"]
+tab_rec, tab_inverse, tab_prompt, tab_data = st.tabs(
+    ["🎯 Recomendar a Usuario", "📍 Recomendar a Sitio (Inverso)", "📝 Editor de Prompt", "🗄️ Visualizador de Datos"]
 )
 
 # --- TAB 1: RECOMENDADOR ---
 with tab_rec:
+    st.subheader("Selección de Sujeto de Prueba")
+    lista_usuarios = df_profiles.apply(
+        lambda x: f"{x['id_usuario']} - {x.get('nombre', 'Sin Nombre')}", axis=1
+    ).tolist()
+    usuario_seleccionado = st.selectbox("Usuario activo:", lista_usuarios)
+    target_id = usuario_seleccionado.split(" - ")[0].strip()
+
+
     user_row = df_profiles[
         df_profiles["id_usuario"].astype(str).str.strip() == target_id
     ]
@@ -339,3 +347,52 @@ with tab_data:
             df_chroma = pd.DataFrame(chroma_data["metadatas"])
             df_chroma["documento_indexado"] = chroma_data["documents"]
             st.dataframe(df_chroma, use_container_width=True)
+
+
+# --- PESTAÑA INVERSA ---
+with tab_inverse:
+    st.markdown("### 🎯 Identificación de Audiencia Objetivo para un Sitio")
+    st.caption("Selecciona un lugar del catálogo para encontrar qué usuarios sin interacción previa son los clientes ideales.")
+    
+    # Lista única de sitios disponibles
+    catalogo_sitios = df_interactions.drop_duplicates(subset=["url_sitio"])[["url_sitio", "nombre_sitio", "categoria_sitio", "ubicacion"]]
+    opciones_sitios = catalogo_sitios.apply(
+        lambda x: f"{x['nombre_sitio']} ({x['categoria_sitio']} - {x['ubicacion']}) | ID: {x['url_sitio']}", axis=1
+    ).tolist()
+    
+    sitio_seleccionado = st.selectbox("Seleccionar Sitio Turístico:", opciones_sitios)
+    selected_url = sitio_seleccionado.split(" | ID: ")[-1].strip()
+    
+    if st.button("🔍 Buscar Audiencia Objetivo", type="primary"):
+        with st.spinner("Buscando usuarios afines en ChromaDB y analizando perfiles con el LLM..."):
+            try:
+                res_inv = engine.recommend_users_for_place(
+                    url_sitio=selected_url,
+                    top_k_retrieval=top_k,
+                    top_n_final=top_n,
+                    model_name=selected_model
+                )
+                
+                # Tiempos
+                tiempos = res_inv.get("tiempos", {})
+                m1, m2, m3 = st.columns(3)
+                m1.metric("⏱️ Tiempo Total", f"{tiempos.get('total_s', 0.0)} s")
+                m2.metric("🔍 Retrieval Usuarios", f"{tiempos.get('retrieval_s', 0.0)} s")
+                m3.metric(f"🧠 Generación ({selected_model})", f"{tiempos.get('generacion_s', 0.0)} s")
+                st.divider()
+                
+                users_rec = res_inv.get("resultado_rag", {}).get("usuarios_recomendados", [])
+                
+                if not users_rec:
+                    st.warning("No se obtuvieron recomendaciones de usuarios.")
+                    st.json(res_inv)
+                else:
+                    for idx, u in enumerate(users_rec, 1):
+                        with st.expander(f"{idx}. {u.get('nombre', 'Usuario')} (ID: {u.get('id_usuario', 'N/A')}) — {u.get('tipo_viajero', 'Viajero')}", expanded=True):
+                            st.markdown(f"**Justificación de Segmento:** {u.get('justificacion_target', 'N/A')}")
+                            
+                with st.expander("🔍 Usuarios recuperados de ChromaDB (Candidatos)"):
+                    st.dataframe(pd.DataFrame(res_inv.get("usuarios_recuperados", [])))
+                    
+            except Exception as e:
+                st.error(f"Error en recomendación inversa: {str(e)}")

@@ -95,5 +95,74 @@ class ChromaStore:
         return candidates
 
 
+    def get_or_create_users_collection(self):
+        """Colección para almacenar las representaciones vectoriales de los usuarios."""
+        return self.client.get_or_create_collection(
+            name="perfiles_usuarios",
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def ingest_users_from_df(self, df_profiles: pd.DataFrame, df_interactions: pd.DataFrame, narrative_builder_func):
+        """Indexa los usuarios usando sus narrativas consolidadas."""
+        users_col = self.get_or_create_users_collection()
+        
+        # Omitir si ya está indexada
+        if users_col.count() > 0:
+            return
+
+        ids, docs, embeddings, metadatas = [], [], [], []
+        
+        for _, row in df_profiles.iterrows():
+            user_id = str(row["id_usuario"]).strip()
+            # Construye la narrativa (explícita + implícita)
+            doc_text = narrative_builder_func(user_id, row, df_interactions)
+            if not doc_text:
+                continue
+                
+            emb = self.ollama.get_embedding(doc_text)
+            
+            ids.append(user_id)
+            docs.append(doc_text)
+            embeddings.append(emb)
+            metadatas.append({
+                "id_usuario": user_id,
+                "nombre": str(row.get("nombre", "Sin Nombre")),
+                "nacionalidad": str(row.get("nacionalidad", "N/A")),
+                "tipo_viajero": str(row.get("tipo_viajero", "N/A")),
+                "presupuesto_viaje": str(row.get("presupuesto_viaje", "N/A"))
+            })
+
+        if ids:
+            users_col.upsert(
+                ids=ids,
+                documents=docs,
+                embeddings=embeddings,
+                metadatas=metadatas
+            )
+
+    def retrieve_user_candidates(self, query_text: str, n_results: int = 6, exclude_user_ids: set[str] | None = None) -> list[dict]:
+        """Recupera los usuarios más afines al vector de un sitio turístico."""
+        users_col = self.get_or_create_users_collection()
+        query_emb = self.ollama.get_embedding(query_text)
+        
+        results = users_col.query(
+            query_embeddings=[query_emb],
+            n_results=n_results + (len(exclude_user_ids) if exclude_user_ids else 0)
+        )
+        
+        candidates = []
+        if results and results["metadatas"]:
+            for meta, dist, doc in zip(results["metadatas"][0], results["distances"][0], results["documents"][0]):
+                if exclude_user_ids and meta["id_usuario"] in exclude_user_ids:
+                    continue
+                c = dict(meta)
+                c["similitud_vectorial"] = round(1.0 - dist, 4)
+                c["resumen_perfil"] = doc
+                candidates.append(c)
+                if len(candidates) == n_results:
+                    break
+        return candidates
+
+
 if __name__ == "__main__":
     print("Hello World!")

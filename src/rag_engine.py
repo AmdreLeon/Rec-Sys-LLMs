@@ -113,6 +113,68 @@ class RAGRecommendationEngine:
             },
         }
 
+    def recommend_users_for_place(
+        self,
+        url_sitio: str,
+        top_k_retrieval: int = 10,
+        top_n_final: int = 3,
+        model_name: str | None = None
+    ) -> dict:
+        t_total_start = time.perf_counter()
+        
+        # 1. Obtener datos del sitio desde el catálogo de interacciones
+        place_matches = self.interactions[self.interactions["url_sitio"].astype(str).str.strip() == str(url_sitio).strip()]
+        if place_matches.empty:
+            raise ValueError(f"Sitio con url '{url_sitio}' no encontrado.")
+            
+        place_row = place_matches.iloc[0]
+        place_context = (
+            f"Nombre: {place_row.get('nombre_sitio', '')}. "
+            f"Categoría: {place_row.get('categoria_sitio', '')}. "
+            f"Ubicación: {place_row.get('ubicacion', '')}."
+        )
+        
+        # Excluir usuarios que ya han interactuado con este sitio
+        visited_user_ids = set(place_matches["id_usuario"].dropna().astype(str))
+        
+        # 2. Retrieval: Búsqueda vectorial de usuarios afines
+        t_ret_start = time.perf_counter()
+        user_candidates = self.store.retrieve_user_candidates(
+            query_text=place_context,
+            n_results=top_k_retrieval,
+            exclude_user_ids=visited_user_ids
+        )
+        t_ret_end = time.perf_counter()
+        
+        if not user_candidates:
+            return {
+                "url_sitio": url_sitio,
+                "mensaje": "No se encontraron usuarios potenciales nuevos.",
+                "tiempos": {"retrieval_s": round(t_ret_end - t_ret_start, 3), "generacion_s": 0.0, "total_s": round(time.perf_counter() - t_total_start, 3)}
+            }
+            
+        # 3. Inferencia Generativa: Ranking y justificación de target
+        t_gen_start = time.perf_counter()
+        result = self.ollama.generate_inverse_recommendations(
+            place_context=place_context,
+            user_candidates=user_candidates,
+            top_n=top_n_final,
+            model_override=model_name
+        )
+        t_gen_end = time.perf_counter()
+        
+        return {
+            "url_sitio": url_sitio,
+            "sitio_analizado": place_context,
+            "usuarios_recuperados": user_candidates,
+            "resultado_rag": result,
+            "tiempos": {
+                "retrieval_s": round(t_ret_end - t_ret_start, 3),
+                "generacion_s": round(t_gen_end - t_gen_start, 3),
+                "total_s": round(time.perf_counter() - t_total_start, 3)
+            }
+        }
+
 
 if __name__ == "__main__":
     print("Hello World!")

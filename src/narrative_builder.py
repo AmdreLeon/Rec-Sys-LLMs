@@ -75,3 +75,14 @@ def build_user_implicit_narrative(
         parts.append(f"Valoró positivamente: {', '.join(top_rated[:3])}.")
 
     return " ".join(parts)
+
+def build_user_full_narrative(
+    user_id: str, user_row: pd.Series, df_interactions: pd.DataFrame
+) -> str:
+    """Combina el perfil explícito y el historial implícito para vectorizar al usuario."""
+    explicit_text = build_user_explicit_narrative(user_row)
+    implicit_text = build_user_implicit_narrative(user_id, df_interactions)
+
+    if implicit_text:
+        return f"{explicit_text} {implicit_text}"
+    return explicit_text

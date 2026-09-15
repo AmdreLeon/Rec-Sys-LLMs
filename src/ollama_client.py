@@ -70,6 +70,33 @@
 import json
 import ollama
 
+
+DEFAULT_INVERSE_PROMPT_TEMPLATE = """Eres un consultor experto en marketing turístico y segmentación de audiencias.
+Dado el siguiente sitio o recurso turístico y un grupo de usuarios candidatos recuperados, selecciona los mejores {top_n} usuarios objetivo (target audience) que tengan la mayor afinidad con la propuesta de valor del lugar.
+
+[INFORMACIÓN DEL SITIO TURÍSTICO]
+{place_context}
+
+[USUARIOS CANDIDATOS]
+{candidates_json}
+
+INSTRUCCIONES:
+1. Analiza el presupuesto, estilo de viaje, historial e intereses de cada usuario frente a lo que ofrece el sitio.
+2. Selecciona exactamente los {top_n} usuarios más idóneos.
+3. Explica de forma concisa y causal por qué este sitio encaja con las motivaciones de ese usuario.
+
+Responde ÚNICAMENTE con un JSON válido con la siguiente estructura:
+{{
+  "usuarios_recomendados": [
+    {{
+      "id_usuario": "id",
+      "nombre": "nombre",
+      "tipo_viajero": "tipo",
+      "justificacion_target": "Por qué este usuario es el cliente objetivo ideal para este lugar"
+    }}
+  ]
+}}"""
+
 DEFAULT_PROMPT_TEMPLATE = """Eres un recomendador turístico experto, riguroso y objetivo.
 Analiza el perfil y contexto del usuario frente a los lugares candidatos recuperados.
 
@@ -147,5 +174,40 @@ class OllamaService:
             prompt=formatted_prompt,
             format="json",
             options={"temperature": 0.1},
+        )
+        return json.loads(response["response"])
+
+    def generate_inverse_recommendations(
+        self,
+        place_context: str,
+        user_candidates: list[dict],
+        top_n: int = 3,
+        model_override: str | None = None
+    ) -> dict:
+        active_gen_model = model_override if model_override else self.gen_model
+        
+        # Limpiar datos para no sobrecargar el contexto
+        clean_candidates = [
+            {
+                "id_usuario": u.get("id_usuario"),
+                "nombre": u.get("nombre"),
+                "tipo_viajero": u.get("tipo_viajero"),
+                "presupuesto": u.get("presupuesto_viaje"),
+                "perfil": u.get("resumen_perfil")
+            }
+            for u in user_candidates
+        ]
+        
+        prompt = DEFAULT_INVERSE_PROMPT_TEMPLATE.format(
+            top_n=top_n,
+            place_context=place_context,
+            candidates_json=json.dumps(clean_candidates, ensure_ascii=False, indent=2)
+        )
+        
+        response = ollama.generate(
+            model=active_gen_model,
+            prompt=prompt,
+            format="json",
+            options={"temperature": 0.1}
         )
         return json.loads(response["response"])
